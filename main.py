@@ -30,7 +30,7 @@ def get_audio():
 
 		try:
 			said = r.recognize_google(audio)
-			print(said)
+			print("you said: " + said)
 		except Exception as e:
 			print("Exception: " + str(e))
 	return said
@@ -72,32 +72,43 @@ def get_events(n, service):
     return events
 
 
+def get_choice():
+    speak("Here's a list of things i can do")
+    for task in tasks:
+        speak(task)
+    speak("what option would you like to choose")
+
+
+def after_choice(choice):
+    if "1" or "one" in choice:
+        service = auth()
+        events = get_events(1, service)
+        for event in events:
+            speak("you have " + event['summary'] + " at " + event['start'].get('dateTime', event['start'].get('time')))
+        speak("is that all you need")
+        
+    elif "2" or "two" in choice:
+        speak("How many events would you like to know")
+        num = get_audio()
+        service = auth()
+        events = get_events(num, service)
+        for event in events:
+            speak(event['summary'])
+        speak("is that all you need")
+    elif "3" or "three" in choice:
+        get_choice()
+        choice_new = get_audio()
+        after_choice(choice_new)
+
+
 speak("Hello, my name is edith. whats your name")
 
 name = get_audio()
 
 speak("Nice to meet you " + name)
 
-speak("Here's a list of things i can do")
-
-tasks = ["number 1, tell you your next event.", "number 2, list your upcoming events."]
-
-for task in tasks:
-	speak(task)
-
-speak("what option would you like to choose")
+get_choice()
 
 choice = get_audio()
 
-if "1" or "one" in choice:
-	service = auth()
-	events = get_events(1, service)
-	for event in events:
-		speak("you have " + event['summary'] + " at " + event['start'].get('time'))
-elif "2" or "two" in choice:
-	speak("How many events would you like to know")
-	num = get_audio()
-	service = auth()
-	events = get_events(num, service)
-	for event in events:
-		speak(event['summary'])
+after_choice(choice)
