@@ -11,6 +11,7 @@ import random
 import pyttsx3
 import speech_recognition as sr
 import pytz
+import subprocess
 
 SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
 MONTHS = ["january", "february", "march", "april", "may", "june","july", "august", "september","october", "november", "december"]
@@ -32,7 +33,7 @@ def get_audio():
 
 		try:
 			said = r.recognize_google(audio)
-			print(said)
+			print("You said: " + said)
 		except Exception as e:
 			print("Exception: " + str(e))
 	return said
@@ -137,14 +138,41 @@ def get_date(text):
 	return datetime.date(month=month, day=day, year=year)
 
 
+def note(text):
+	date = datetime.datetime.now()
+	file_name = str(date).replace(":", "-") + "-note.txt"
+	with open(file_name, "w") as f:
+		f.write(text)
+
+	subprocess.Popen(["notepad.exe", file_name])
+
+
 SERVICE = auth()
+print("Start")
+speak("Here's what I can do:")
+
+tasks = ["I can list your calendar events on a specific day.", "Or...I can make a note for you."]
+
+for task in tasks:
+	speak(task)
+
+speak("what would you like me to do?")
+
 text = get_audio().lower()
 
-CALENDAR_STRS = ["what do i have", "do i have plans", "am i busy", "do i have"]
+CALENDAR_STRS = ["what do i have", "do i have plans", "am i busy", "do i have", "what i have"]
 for phrase in CALENDAR_STRS:
-    if phrase in text.lower():
+    if phrase in text:
         date = get_date(text)
         if date:
             get_events(date, SERVICE)
         else:
             speak("Please Try Again")
+
+NOTE_STRS = ["make a note", "write this down", "remember this"]
+for phrase in NOTE_STRS:
+    if phrase in text:
+    	speak("what would you like me to write down?")
+    	note_text = get_audio()
+    	note(note_text)
+        speak("I have made a note of that")
