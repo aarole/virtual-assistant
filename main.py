@@ -6,20 +6,22 @@ from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 import os
-import os
-import playsound
+import time
 import random
+import pyttsx3
 import speech_recognition as sr
-from gtts import gTTS
+import pytz
 
 SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+MONTHS = ["january", "february", "march", "april", "may", "june","july", "august", "september","october", "november", "december"]
+DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+DAY_EXTENTIONS = ["rd", "th", "st", "nd"]
+
 
 def speak(text):
-	tts = gTTS(text=text, lang="en")
-	filename = "voice" + str(random.randint(1, 1000)) + ".mp3"
-	#filename = "voice.mp3"
-	tts.save(filename)
-	playsound.playsound(filename)
+	engine = pyttsx3.init()
+	engine.say(text)
+	engine.runAndWait()
 
 
 def get_audio():
@@ -30,85 +32,119 @@ def get_audio():
 
 		try:
 			said = r.recognize_google(audio)
-			print("you said: " + said)
+			print(said)
 		except Exception as e:
 			print("Exception: " + str(e))
 	return said
 
+
 def auth():
-    creds = None
-    if os.path.exists('token.pickle'):
-        with open('token.pickle', 'rb') as token:
-            creds = pickle.load(token)
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+	creds = None
+	if os.path.exists('token.pickle'):
+		with open('token.pickle', 'rb') as token:
+			creds = pickle.load(token)
+	if not creds or not creds.valid:
+		if creds and creds.expired and creds.refresh_token:
+			creds.refresh(Request())
+		else:
+			flow = InstalledAppFlow.from_client_secrets_file(
+				'credentials.json', SCOPES)
+			creds = flow.run_local_server(port=0)
+		with open('token.pickle', 'wb') as token:
+			pickle.dump(creds, token)
+
+	service = build('calendar', 'v3', credentials=creds)
+
+	return service
+
+
+def get_events(day, service):
+	date = datetime.datetime.combine(day, datetime.datetime.min.time())
+	end_date = datetime.datetime.combine(day, datetime.datetime.max.time())
+	utc = pytz.utc
+	date = date.astimezone(utc)
+	end_date = end_date.astimezone(utc)
+
+	events_result = service.events().list(calendarId='primary', timeMin=date.isoformat(), timeMax=end_date.isoformat(), singleEvents=True,
+										  orderBy='startTime').execute()
+	events = events_result.get('items', [])
+
+	if not events:
+		print('No upcoming events found.')
+	else:
+		speak(f"You have {len(events)} events on this day")
+		for event in events:
+			start = event['start'].get('dateTime', event['start'].get('date'))
+			print(start, event['summary'])
+			start_time = str(start.split("T")[1].split("-")[0].split(":")[0]) + ":" + str(start.split("T")[1].split("-")[0].split(":")[1])
+			if int(start_time.split(":")[0]) < 12:
+				start_time += " am"
+			else:
+				start_time = str(int(start_time.split(":")[0]) - 12) + ":" + str(start.split("T")[1].split("-")[0].split(":")[1])
+				start_time += " pm"
+			speak(event['summary'] + " at " + start_time)
+
+
+def get_date(text):
+	text = text.lower()
+	today = datetime.date.today()
+
+	if text.count("today") > 0:
+		return today
+
+	day = -1
+	day_of_week = -1
+	month = -1
+	year = today.year
+
+	for word in text.split():
+		if word in MONTHS:
+			month = MONTHS.index(word) + 1
+		elif word in DAYS:
+			day_of_week = DAYS.index(word)
+		elif word.isdigit():
+			day = int(word)
+		else:
+			for ext in DAY_EXTENTIONS:
+				found = word.find(ext)
+				if found > 0:
+					try:
+						day = int(word[:found])
+					except:
+						pass
+
+	if month < today.month and month != -1:
+		year = year + 1
+
+	if day < today.day and month == -1 and day != -1:
+		month = month + 1
+
+	if month == -1 and day == -1 and day_of_week != -1:
+		current_day_of_week = today.weekday()
+		diff = day_of_week - current_day_of_week
+
+		if diff < 0:
+			diff += 7
+
+			if text.count("next") >= 1:
+				diff += 7
+
+		return today + datetime.timedelta(diff)
+
+	if month == -1 and day == -1:
+		return None
+
+	return datetime.date(month=month, day=day, year=year)
+
+
+SERVICE = auth()
+text = get_audio().lower()
+
+CALENDAR_STRS = ["what do i have", "do i have plans", "am i busy", "do i have"]
+for phrase in CALENDAR_STRS:
+    if phrase in text.lower():
+        date = get_date(text)
+        if date:
+            get_events(date, SERVICE)
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                'credentials.json', SCOPES)
-            creds = flow.run_local_server(port=0)
-        with open('token.pickle', 'wb') as token:
-            pickle.dump(creds, token)
-
-    service = build('calendar', 'v3', credentials=creds)
-
-    return service
-
-
-def get_events(n, service):
-    now = datetime.datetime.utcnow().isoformat() + 'Z'
-    print(f'Getting the upcoming {n} events')
-    events_result = service.events().list(calendarId='primary', timeMin=now,
-                                        maxResults=n, singleEvents=True,
-                                        orderBy='startTime').execute()
-    events = events_result.get('items', [])
-
-    if not events:
-        print('No upcoming events found.')
-    for event in events:
-        start = event['start'].get('dateTime', event['start'].get('date'))
-        print(event['summary'])
-        print(event['start'].get('dateTime', event['start'].get('time')))
-    return events
-
-
-def get_choice():
-    speak("Here's a list of things i can do")
-    for task in tasks:
-        speak(task)
-    speak("what option would you like to choose")
-
-
-def after_choice(choice):
-    if "1" or "one" in choice:
-        service = auth()
-        events = get_events(1, service)
-        for event in events:
-            speak("you have " + event['summary'] + " at " + event['start'].get('dateTime', event['start'].get('time')))
-        speak("is that all you need")
-        
-    elif "2" or "two" in choice:
-        speak("How many events would you like to know")
-        num = get_audio()
-        service = auth()
-        events = get_events(num, service)
-        for event in events:
-            speak(event['summary'])
-        speak("is that all you need")
-    elif "3" or "three" in choice:
-        get_choice()
-        choice_new = get_audio()
-        after_choice(choice_new)
-
-
-speak("Hello, my name is edith. whats your name")
-
-name = get_audio()
-
-speak("Nice to meet you " + name)
-
-get_choice()
-
-choice = get_audio()
-
-after_choice(choice)
+            speak("Please Try Again")
